@@ -4,3 +4,4 @@ boto3
 pdf2image
 pillow
 python-multipart
+python-dotenv

@@ -6,6 +6,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pdf2image import convert_from_bytes
 from PIL import Image
 from io import BytesIO
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 security = HTTPBasic()
@@ -161,4 +164,5 @@ if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    reload_enabled = os.environ.get("RELOAD", "false").lower() == "true"
+    uvicorn.run("main:app", host=host, port=port, reload=reload_enabled)
