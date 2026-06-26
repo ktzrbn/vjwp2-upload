@@ -1,6 +1,6 @@
 # VJWP PDF Processor
 
-FastAPI service that accepts a PDF upload, renders the first page to JPEG using Poppler, generates a small image and thumbnail sized to CollectionBuilder spec, and uploads both to S3.
+FastAPI service that accepts a PDF upload, requires an object ID in the format `vjwp_<number>`, renders the first page to JPEG using Poppler, generates a small image and thumbnail, and uploads all three files to S3.
 
 ## Quick Start (AlmaLinux / Amazon Linux)
 
@@ -30,14 +30,14 @@ pip install -r requirements.txt
 Edit the `.env` file in the project root:
 
 ```dotenv
-S3_BUCKET=your-bucket-name
+S3_BUCKET=victorianjewishwritersproject
 AWS_REGION=us-east-1
 # These credentials are for the upload web app, not for SSH server access.
 BASIC_USER=admin
 BASIC_PASSWORD=change-this-password
-S3_PDF_PREFIX=pdfs
-S3_SMALL_PREFIX=smalls
-S3_THUMB_PREFIX=thumbnails
+S3_PDF_PREFIX=objects
+S3_SMALL_PREFIX=objects/small
+S3_THUMB_PREFIX=objects/thumbs
 HOST=127.0.0.1
 PORT=8000
 RELOAD=false
@@ -50,6 +50,7 @@ Notes:
 - Set `RELOAD=true` only for local development.
 - `BASIC_USER` and `BASIC_PASSWORD` protect the upload page in the browser. They are not your Linux login credentials.
 - Recreate this same `.env` file on the server; it is intentionally gitignored.
+- Uploads are stored as `objects/vjwp_<number>.pdf`, `objects/small/vjwp_<number>_sm.jpg`, and `objects/thumbs/vjwp_<number>_th.jpg`.
 
 ### 4. Run
 
@@ -155,7 +156,8 @@ ssh -i your-key.pem ec2-user@<your-instance-ip>
 
 ## Notes
 
-- Poppler renders PDF page 1 at 300 DPI before resizing — same pipeline as CollectionBuilder.
+- Poppler renders PDF page 1 at 300 DPI before resizing.
 - Small image: 800×800 px max, JPEG quality 85.
 - Thumbnail: 300×300 px max, JPEG quality 80 (change `THUMB_SIZE` in `main.py` to `(450, 450)` if your CollectionBuilder theme requires it).
+- The object ID must match `vjwp_<number>`.
 - The upload endpoint is protected by HTTP Basic Auth. Use HTTPS in production.

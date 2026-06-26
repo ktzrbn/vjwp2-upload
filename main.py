@@ -1,4 +1,5 @@
 import os
+import re
 import boto3
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
@@ -14,16 +15,19 @@ app = FastAPI()
 security = HTTPBasic()
 
 # ====== CONFIGURATION ======
-S3_BUCKET = os.environ.get("S3_BUCKET", "your-bucket-name")
+S3_BUCKET = os.environ.get("S3_BUCKET", "victorianjewishwritersproject")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 BASIC_USER = os.environ.get("BASIC_USER", "admin")
 BASIC_PASSWORD = os.environ.get("BASIC_PASSWORD", "supersecretpassword")
 USER_DB = {BASIC_USER: BASIC_PASSWORD}
 
-# S3 folder paths (CollectionBuilder conventions)
-S3_PDF_PREFIX = os.environ.get("S3_PDF_PREFIX", "pdfs")
-S3_SMALL_PREFIX = os.environ.get("S3_SMALL_PREFIX", "smalls")
-S3_THUMB_PREFIX = os.environ.get("S3_THUMB_PREFIX", "thumbnails")
+def normalize_prefix(prefix: str) -> str:
+    return prefix.strip().strip("/")
+
+
+S3_PDF_PREFIX = normalize_prefix(os.environ.get("S3_PDF_PREFIX", "objects"))
+S3_SMALL_PREFIX = normalize_prefix(os.environ.get("S3_SMALL_PREFIX", "objects/small"))
+S3_THUMB_PREFIX = normalize_prefix(os.environ.get("S3_THUMB_PREFIX", "objects/thumbs"))
 
 # Standard CollectionBuilder bounding boxes
 SMALL_SIZE = (800, 800)
@@ -44,6 +48,10 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 
+def build_s3_key(prefix: str, filename: str) -> str:
+    return f"{prefix}/{filename}" if prefix else filename
+
+
 @app.get("/", response_class=HTMLResponse)
 async def main_page(username: str = Depends(get_current_username)):
     return f"""
@@ -55,7 +63,7 @@ async def main_page(username: str = Depends(get_current_username)):
         <p>Logged in as: <b>{username}</b></p>
         <form action="/upload" method="post" enctype="multipart/form-data" style="background: #f4f4f4; padding: 20px; border-radius: 8px; max-width: 400px;">
             <label><b>VJWP Identifier (Object ID):</b></label><br>
-            <input type="text" name="vjwp_id" required placeholder="e.g. demo_doc001" style="width:100%; margin-bottom:15px; padding:8px;"><br>
+            <input type="text" name="vjwp_id" required placeholder="e.g. vjwp_123" pattern="vjwp_[0-9]+" style="width:100%; margin-bottom:15px; padding:8px;"><br>
             
             <label><b>Select PDF:</b></label><br>
             <input type="file" name="file" accept=".pdf" required style="margin-bottom:20px;"><br>
@@ -73,10 +81,9 @@ async def handle_upload(
     file: UploadFile = File(...),
     username: str = Depends(get_current_username)
 ):
-    # Enforce lowercase/safe strings to match CollectionBuilder standards
-    vjwp_id = "".join(c for c in vjwp_id if c.isalnum() or c in ('-', '_')).strip().lower()
-    if not vjwp_id:
-        raise HTTPException(status_code=400, detail="Invalid VJWP identifier.")
+    vjwp_id = vjwp_id.strip().lower()
+    if not re.fullmatch(r"vjwp_\d+", vjwp_id):
+        raise HTTPException(status_code=400, detail="Invalid VJWP identifier. Use the format vjwp_<number>.")
     
     pdf_bytes = await file.read()
     if not pdf_bytes:
@@ -112,9 +119,9 @@ async def handle_upload(
         raise HTTPException(status_code=400, detail=f"Image processing failed: {str(e)}")
 
     # Match CollectionBuilder exact structural folders and extensions
-    orig_key = f"{S3_PDF_PREFIX}/{vjwp_id}.pdf"
-    small_key = f"{S3_SMALL_PREFIX}/{vjwp_id}_sm.jpg"
-    thumb_key = f"{S3_THUMB_PREFIX}/{vjwp_id}_th.jpg"
+    orig_key = build_s3_key(S3_PDF_PREFIX, f"{vjwp_id}.pdf")
+    small_key = build_s3_key(S3_SMALL_PREFIX, f"{vjwp_id}_sm.jpg")
+    thumb_key = build_s3_key(S3_THUMB_PREFIX, f"{vjwp_id}_th.jpg")
 
     # Push to S3 with correct Mime-Types
     try:
