@@ -1,6 +1,8 @@
 import os
 import re
+import shutil
 import boto3
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -28,6 +30,7 @@ def normalize_prefix(prefix: str) -> str:
 S3_PDF_PREFIX = normalize_prefix(os.environ.get("S3_PDF_PREFIX", "objects"))
 S3_SMALL_PREFIX = normalize_prefix(os.environ.get("S3_SMALL_PREFIX", "objects/small"))
 S3_THUMB_PREFIX = normalize_prefix(os.environ.get("S3_THUMB_PREFIX", "objects/thumbs"))
+POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
 
 # Standard CollectionBuilder bounding boxes
 SMALL_SIZE = (800, 800)
@@ -90,8 +93,20 @@ async def handle_upload(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     
     try:
+        poppler_path = POPPLER_PATH
+        if not poppler_path and not shutil.which("pdfinfo"):
+            raise Exception(
+                "Poppler is not available. Install Poppler and either add it to PATH or set POPPLER_PATH in .env."
+            )
+
         # Replicate CollectionBuilder PDF rendering: Render page 1 at 300 DPI density using Poppler
-        images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1, dpi=300)
+        images = convert_from_bytes(
+            pdf_bytes,
+            first_page=1,
+            last_page=1,
+            dpi=300,
+            poppler_path=poppler_path,
+        )
         if not images:
             raise Exception("Poppler failed to extract any pages from this PDF.")
         
@@ -128,6 +143,11 @@ async def handle_upload(
         s3_client.put_object(Bucket=S3_BUCKET, Key=orig_key, Body=pdf_bytes, ContentType="application/pdf")
         s3_client.put_object(Bucket=S3_BUCKET, Key=small_key, Body=small_bytes, ContentType="image/jpeg")
         s3_client.put_object(Bucket=S3_BUCKET, Key=thumb_key, Body=thumb_bytes, ContentType="image/jpeg")
+    except (NoCredentialsError, PartialCredentialsError):
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload to S3: no AWS credentials found. For local testing, set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env, or use an AWS profile. On EC2, attach an IAM role to the instance.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {str(e)}")
 

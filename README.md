@@ -17,6 +17,16 @@ sudo amazon-linux-extras enable python3.8   # if needed
 sudo yum install -y poppler-utils python3 python3-pip
 ```
 
+**Ubuntu / Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install -y poppler-utils python3 python3-pip python3-venv
+```
+
+**Windows local testing:**
+
+Install Poppler for Windows, then either add its `bin` directory to your `PATH` or set `POPPLER_PATH` in `.env` to that `bin` directory.
+
 ### 2. Create a virtualenv and install Python dependencies
 
 ```bash
@@ -32,12 +42,19 @@ Edit the `.env` file in the project root:
 ```dotenv
 S3_BUCKET=victorianjewishwritersproject
 AWS_REGION=us-east-1
+# Optional for local testing only. Leave blank on EC2 when using an IAM role.
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_SESSION_TOKEN=
 # These credentials are for the upload web app, not for SSH server access.
 BASIC_USER=admin
 BASIC_PASSWORD=change-this-password
 S3_PDF_PREFIX=objects
 S3_SMALL_PREFIX=objects/small
 S3_THUMB_PREFIX=objects/thumbs
+# Leave blank on Linux if Poppler is already on PATH.
+# Example for Windows: C:\poppler\Library\bin
+POPPLER_PATH=
 HOST=127.0.0.1
 PORT=8000
 RELOAD=false
@@ -49,6 +66,8 @@ Notes:
 - Change `PORT` only if `8000` is already in use.
 - Set `RELOAD=true` only for local development.
 - `BASIC_USER` and `BASIC_PASSWORD` protect the upload page in the browser. They are not your Linux login credentials.
+- For local testing, either set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `.env`, or configure an AWS profile on your machine.
+- If local PDF processing fails with `Unable to get page count`, install Poppler and set `POPPLER_PATH` if it is not already on `PATH`.
 - Recreate this same `.env` file on the server; it is intentionally gitignored.
 - Uploads are stored as `objects/vjwp_<number>.pdf`, `objects/small/vjwp_<number>_sm.jpg`, and `objects/thumbs/vjwp_<number>_th.jpg`.
 
@@ -141,6 +160,12 @@ After that, the web UI for this app will be available at `https://objectupload.v
 ## AWS Credentials
 
 Your PEM key (e.g. `your-key.pem`) is used to **SSH into the EC2 instance only**. It is not used for S3 access, and it is not the same thing as the app's `BASIC_PASSWORD`.
+
+For local testing on your own machine, boto3 needs AWS credentials from one of these sources:
+
+1. `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `.env`
+2. An AWS CLI profile in `~/.aws/credentials`
+3. Temporary session credentials, if your AWS setup requires them
 
 S3 access is handled separately via the EC2 instance's **IAM role**:
 
